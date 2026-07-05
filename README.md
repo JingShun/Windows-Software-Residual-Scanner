@@ -10,7 +10,6 @@
 ## 🌟 核心優勢與設計盲點防護
 
 * **零 `Win32_Product` 調用**：避免傳統 WMI 查詢會強制觸發 Windows Installer 自動修復（大量產生 Event 1035 日誌）與 CPU/IO 效能問題。
-* **高覆蓋**：利用 Windows Installer COM 物件與實體二進位 `.msi` 核心快取特徵逆向枚舉，完美涵蓋隱藏的 `ARPSYSTEMCOMPONENT` 系統組件。
 * **跨使用者 (All Users) 深挖**：自動掛載非當前登入使用者的離線登錄檔（`NTUSER.DAT` 與 `UsrClass.dat`），全面防堵多使用者環境下的偵測死角。
 * **極高相容性**：理論支援從 Windows 7、Windows 10、11 到 Windows Server 2025 的所有主流 Windows 平台。
 ---
