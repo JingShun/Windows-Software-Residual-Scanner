@@ -66,7 +66,6 @@ Windows-Software-Residual-Scanner/
 | **Timestamp** | 跡證偵測時間 |
 | **Hostname** | 執行掃描的本機電腦名稱 |
 | **Category** | 殘留類別（例如：HKLM_Registry, Windows_Installer_COM_Cache, User_Registry） |
-| **RiskLevel** | 評估風險等級（高/中/低），供手動清除時參考 |
 | **Path** | 實體檔案路徑、機碼路徑或 MSI GUID |
 | **Details** | 該跡證的詳細中繼資料（如產品顯示名稱、服務路徑等） |
 
