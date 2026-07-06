@@ -60,13 +60,14 @@ function Add-Finding {
 # ---
 # 階段一：全域登錄檔 (HKLM) 傳統移除清單與自動執行
 # ---
-Write-Host "[1/6] 掃描 HKLM 移除清單與自動執行點..."
+Write-Host "[1/7] 掃描 HKLM 移除清單與自動執行點..."
 $HKLMPaths = @(
     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
     "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\*",
     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce\*",
-    "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Run\*"
+    "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Run\*",
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\*"
 )
 Get-ItemProperty -Path $HKLMPaths -ErrorAction SilentlyContinue | 
     Where-Object {
@@ -83,7 +84,44 @@ Get-ItemProperty -Path $HKLMPaths -ErrorAction SilentlyContinue |
         Add-Finding -Category "HKLM_Registry" -Path $_.PSPath -Details $DetailsStr 
     }
 
-Write-Host "[2/6] 掃描 Windows Installer 登錄檔特徵..."
+Write-Host "[2/7] 掃描 系統全域 Shell 擴充 (ContextMenu & DragDrop)..."
+
+# 利用 reg query 與 findstr 進行極速字串搜索 (忽略大小寫 /i)
+# 缺點：無法產出精美的 PowerShell 物件，僅適合尋找「是否存在」的鐵證
+$RegResult = & reg query "HKLM\SOFTWARE\Classes" /f "$SafeKeyword" /s 2>$null
+
+if ($RegResult) {
+$CurrentRegKey = ""
+    
+    foreach ($line in $RegResult) {
+        $cleanLine = $line.Trim()
+        
+        # 1. 略過空白行與 Windows 命令列輸出的統計結尾 (例如: "搜尋的結果: 發現 9 個相符。")
+        if ([string]::IsNullOrWhiteSpace($cleanLine) -or $cleanLine -match "^搜尋") { 
+            continue 
+        }
+
+        # 2. 狀態更新：判斷是否為機碼路徑 (Key)
+        if ($cleanLine -match "^HKEY_") {
+            $CurrentRegKey = $cleanLine
+            
+            # 若機碼本身符合我們關注的右鍵選單或 CLSID 區域，則記錄
+            if ($CurrentRegKey -match "(?i)(ShellEx|ContextMenuHandlers|DragDropHandlers|CLSID)") {
+                Add-Finding -Category "Fast_Reg_Key" -Path $CurrentRegKey -Details "Key Match"
+            }
+        } 
+        # 3. 資料提取：判斷為數值 (Value)
+        else {
+            # 確保這個數值是屬於我們關注的核心區域，而非無關的雜訊
+            if ($CurrentRegKey -match "(?i)(ShellEx|ContextMenuHandlers|DragDropHandlers|CLSID)") {
+                # 記錄該數值，並把它的父機碼當作路徑
+                Add-Finding -Category "Fast_Reg_Value" -Path $CurrentRegKey -Details $cleanLine
+            }
+        }
+    }
+}	
+
+Write-Host "[3/7] 掃描 Windows Installer 登錄檔特徵..."
 $DeepPaths = @(
     "HKLM:\SOFTWARE\Classes\Installer\Products\*",
     "HKLM:\SOFTWARE\Classes\Installer\Features\*",
@@ -98,7 +136,7 @@ Get-ItemProperty -Path $DeepPaths -ErrorAction SilentlyContinue |
 # ---
 # 階段二：系統服務與 100% 覆蓋率的實體 MSI 快取特徵掃描
 # ---
-Write-Host "[3/6] 掃描 系統服務與 Installer 核心快取..."
+Write-Host "[4/7] 掃描 系統服務與 Installer 核心快取..."
 
 # 服務掃描 (相容 PSv2/Win7)
 try { $Services = Get-CimInstance -ClassName Win32_Service -ErrorAction Stop }
@@ -146,7 +184,7 @@ if (Test-Path $InstallerFolder) {
 # ---
 # 階段三：排程任務與 Appx 封裝
 # ---
-Write-Host "[4/6] 掃描 排程任務與 Appx 封裝..."
+Write-Host "[5/7] 掃描 排程任務與 Appx 封裝..."
 try {
     Get-ScheduledTask -ErrorAction Stop | 
         Where-Object { $_.TaskName -match $SafeKeyword -or $_.TaskPath -match $SafeKeyword } |
@@ -166,7 +204,7 @@ try {
 # ---
 # 階段四：跨使用者配置與登錄檔 (包含 NTUSER.DAT 與 UsrClass.dat)
 # ---
-Write-Host "[5/6] 掃描 使用者目錄與離線登錄檔 (NTUSER.DAT / UsrClass.dat)..."
+Write-Host "[6/7] 掃描 使用者目錄與離線登錄檔 (NTUSER.DAT / UsrClass.dat)..."
 
 # 取得 User Profile，嚴格使用 SID 正規表示式過濾，避免路徑硬編碼問題與系統帳戶雜訊
 $Profiles = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" | 
@@ -221,13 +259,18 @@ foreach ($Profile in $Profiles) {
         "\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
         "\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
         "\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\*",
-        "\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce\*"
+        "\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce\*",
+        "\Software\Microsoft\Windows\CurrentVersion\App Paths\*"
     )
     Invoke-UserHiveScan -HivePath "$ProfilePath\NTUSER.DAT" -TempHiveName "TempHive_$SID" -TargetSubKeys $NtuserKeys -CategoryPrefix "User_Registry"
 
     # 2. 掃描 UsrClass.dat (處理被隱藏的檔案關聯與 COM 物件駐留點)
     $UsrClassKeys = @(
-        "\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\*"
+        "\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\*",
+        "\VirtualStore\MACHINE\SOFTWARE\Classes\*\ShellEx\ContextMenuHandlers\*",
+        "\*\ShellEx\ContextMenuHandlers\*",
+        "\Directory\ShellEx\ContextMenuHandlers\*",
+        "\Folder\ShellEx\ContextMenuHandlers\*"
     )
     Invoke-UserHiveScan -HivePath "$ProfilePath\AppData\Local\Microsoft\Windows\UsrClass.dat" -TempHiveName "TempClass_$SID" -TargetSubKeys $UsrClassKeys -CategoryPrefix "User_UsrClass"
 }
@@ -235,7 +278,7 @@ foreach ($Profile in $Profiles) {
 # ---
 # 階段五：全域與使用者資料夾特徵碼盲掃 (高 I/O 消耗警告)
 # ---
-Write-Host "[6/6] 掃描 全域與使用者深層資料夾..."
+Write-Host "[7/7] 掃描 全域與使用者深層資料夾..."
 $GlobalDirs = @(
     $env:ProgramData, 
     ${env:ProgramFiles}, 
