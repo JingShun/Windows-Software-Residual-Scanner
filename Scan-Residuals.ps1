@@ -30,6 +30,8 @@ function Initialize-ScannerContext {
     $script:MountedHives = New-Object 'System.Collections.Generic.HashSet[string]'
     $script:SearchMode = $SearchMode
     $script:MatchedAppXFamilies = New-Object 'System.Collections.Generic.HashSet[string]'
+	
+	$script:CurrentScanUserName = $null
 
     if ($SearchMode -eq "Regex") {
         try { $script:Pattern = $Keyword; [regex]::new($script:Pattern) | Out-Null } 
@@ -47,6 +49,11 @@ function Test-KeywordMatch([string]$InputText) {
 
 function Register-Finding {
     param([string]$Category, [string]$Path, [string]$Details, [string]$Confidence = "Medium", [string]$Status = "Detected")
+
+	if ($null -ne $script:CurrentScanUserName -and $script:CurrentScanUserName -ne "") {
+        $Details = "User: $script:CurrentScanUserName | $Details"
+    }
+
     $null = $script:InventoryData.Add([PSCustomObject]@{
         Timestamp  = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
         Hostname   = $env:COMPUTERNAME
@@ -56,7 +63,7 @@ function Register-Finding {
         Details    = $Details
         Status     = $Status
     })
-    
+
     $Color = switch ($Confidence) {
         "High"   { "Green" }
         "Medium" { "Yellow" }
@@ -64,7 +71,7 @@ function Register-Finding {
         default  { "White" }
     }
     if ($Status -eq "Uncertain") { $Color = "DarkYellow" }
-    
+
     Write-Host "[$Confidence] $Category - $Path" -ForegroundColor $Color
 }
 
@@ -476,6 +483,18 @@ try {
     foreach ($Profile in $Profiles) {
         $SID = $Profile.PSChildName; $ProfilePath = $Profile.ProfileImagePath
         if (-not (Test-Path $ProfilePath)) { continue }
+		
+		# 利用 .NET 高速將 SID 反查為明文 Username，用完就設回null
+		$script:CurrentScanUserName = $null
+		try {
+			$SidObj = New-Object System.Security.Principal.SecurityIdentifier($SID)
+			$UserObj = $SidObj.Translate([System.Security.Principal.NTAccount])
+			$script:CurrentScanUserName = $UserObj.Value  # 格式會是 "DOMAIN\Username" 或 "COMPUTER\Username"
+		} catch {
+			# 如果是已刪除的孤兒帳號，則退而求其次從路徑提取
+			$script:CurrentScanUserName = Split-Path $ProfilePath -Leaf
+		}
+		
         $null = $FileSystemTargets.Add("$ProfilePath\AppData\Local")
 
         # 捨棄緩慢的 AppX User API，改採 O(1) 實體目錄性能較好
@@ -525,6 +544,9 @@ try {
             & reg.exe unload "HKU\Temp_${SID}_Classes" 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0) { $null = $script:MountedHives.Remove("HKU\Temp_${SID}_Classes") }
         }
+		
+		# 用完就設回null
+		$script:CurrentScanUserName = $null
     }
 
     Scan-FileSystemResiduals -TargetDirs $FileSystemTargets
