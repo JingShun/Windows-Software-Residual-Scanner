@@ -1,4 +1,4 @@
-# Windows Software Residual Scanner (Windows軟體殘留找尋工具)
+# Windows Software Residual Scanner (Windows軟體殘留診斷工具)
 
 
 當 Windows 軟體透過常規管道卸載後，往往會在系統深層（如 Windows Installer 快取、離線登錄檔、使用者隱藏資料夾）留下特徵殘留。這會導致企業內部的資產盤點軟體小概率持續觸發漏洞告警，判定該軟體依然存活。
@@ -7,12 +7,35 @@
 
 ---
 
+## ⚠️ 【核心盲區】關鍵字匹配機制的技術現實（使用必讀）
+
+本工具的預設比對模式為 `Contains`（底層調用 .NET `IndexOf` 並忽略大小寫）。系統只會識別**完全連續的子字串**。若輸入不當的縮寫，將導致因字串比對不到而缺失資料。
+
+> ### 📌 致命錯誤範例：以 VS Code 為例
+> 微軟官方於 Windows 註冊的標準名稱為 **`Visual Studio Code`**。
+> * **❌ 錯誤輸入：** `Vs Code`
+> * **底層盲區解析：** 在字串 `"Visual Studio Code"` 之中，不存在連續的 `"vs code"`，因此**所有核心登錄檔將全數判定不匹配（抓不到東西）**。
+> * **唯一命中的假象：** 掃描結果可能僅出現一筆 `C:\Program Files\Microsoft VS Code`，那僅僅是因為微軟在實體資料夾命名中剛好使用了該連續字串，並不代表系統已盤點完整。
+
+### 💡 關鍵字輸入策略與最佳實踐
+當目標軟體名稱包含多個單字、或存在常見縮寫時，**強烈建議在啟動腳本時將比對模式切換為 `Regex`（正規表達式）**。
+
+| 目標軟體 | ❌ 錯誤/流產輸入 (Contains) | 建議標準輸入 (Contains) | 建議正則輸入 (切換為 Regex 模式) |
+| :--- | :--- | :--- | :--- |
+| **Visual Studio Code** | `VS Code`, `VsCode` | `Visual Studio Code` | `VSCode\|VS Code\|Visual Studio Code` |
+
+
+---
+
 ## 🌟 核心優勢與設計盲點防護
 
 * **零 `Win32_Product` 調用**：避免傳統 WMI 查詢會強制觸發 Windows Installer 自動修復（大量產生 Event 1035 日誌）與 CPU/IO 效能問題。
-* **跨使用者 (All Users) 深挖**：自動掛載非當前登入使用者的離線登錄檔（`NTUSER.DAT` 與 `UsrClass.dat`），全面防堵多使用者環境下的偵測死角。
+* **跨使用者 (All Users) 深挖**：自動列舉系統所有使用者安全識別碼（SID），並透過原生 `reg.exe` 機制掛載離線使用者的 `NTUSER.DAT` 與 `UsrClass.dat`。全面找出多使用者環境、共用電腦底下的偵測死角。
 * **極高相容性**：理論支援從 Windows 7、Windows 10、11 到 Windows Server 2025 的所有主流 Windows 平台。
+* **廣度優先檔案檢索 (BFS)：** 針對 `ProgramFiles` 與使用者 `AppData\Local` 等現代 User-level 安裝重災區進行分流檢索，預設動態限制安全深度，兼顧效能與深層殘留偵測。
+
 ---
+
 
 ## 💻 系統需求與環境測試
 
@@ -25,8 +48,7 @@
 
 1. **本工具僅提供「唯讀盤點」功能**，絕不會主動刪除系統上的任何檔案或登錄檔。
 2. 掃描報告中列出的項目，可能包含與該關鍵字同名之系統核心依賴庫（例如特定版本的 Visual C++ Redistributable 某組件）。
-3. **因軟體的實際名稱不同，可能會無結果** (如僅輸入 `VS Code`可能無結果，須改用官方定義名稱`Visual Studio Code`或加上其他執行檔名稱用正則表示式來執行)
-4. **警告：** 嚴禁在未經詳細技術評估前盲目刪除報告中的路徑。誤刪 Windows Installer 底層快取或註冊表可能導致其他正常軟體損毀或系統不穩定，使用者須自行承擔手動清除之風險。
+3. **警告：** 嚴禁在未經詳細技術評估前盲目刪除報告中的路徑。誤刪 Windows Installer 底層快取或註冊表可能導致其他正常軟體損毀或系統不穩定，使用者須自行承擔手動清除之風險。
 
 ---
 
