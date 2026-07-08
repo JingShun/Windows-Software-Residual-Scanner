@@ -25,7 +25,8 @@
 
 1. **本工具僅提供「唯讀盤點」功能**，絕不會主動刪除系統上的任何檔案或登錄檔。
 2. 掃描報告中列出的項目，可能包含與該關鍵字同名之系統核心依賴庫（例如特定版本的 Visual C++ Redistributable 某組件）。
-3. **警告：** 嚴禁在未經詳細技術評估前盲目刪除報告中的路徑。誤刪 Windows Installer 底層快取或註冊表可能導致其他正常軟體損毀或系統不穩定，使用者須自行承擔手動清除之風險。
+3. **因軟體的實際名稱不同，可能會無結果** (如僅輸入 `VS Code`可能無結果，須改用官方定義名稱`Visual Studio Code`或加上其他執行檔名稱用正則表示式來執行)
+4. **警告：** 嚴禁在未經詳細技術評估前盲目刪除報告中的路徑。誤刪 Windows Installer 底層快取或註冊表可能導致其他正常軟體損毀或系統不穩定，使用者須自行承擔手動清除之風險。
 
 ---
 
@@ -48,7 +49,9 @@ Windows-Software-Residual-Scanner/
 2. 選擇 **「以系統管理員身分執行 (Run as Administrator)」**。
 
 ### 步驟 3：輸入關鍵字
-在命令提示字元視窗中輸入你要尋找的軟體關鍵字（例如：`ReiBoot` 或 `AnyDesk`），程式即開始執行六大階段的深層掃描。
+在命令提示字元視窗中輸入你要尋找的軟體關鍵字（例如：`ReiBoot` 、 `AnyDesk` 或 使用正則表示式），指定關鍵字是包含模式(Contains)還是正則表示式(Regex)，然後開始掃描。
+
+### 步驟 4：查看輸出的CSV檔內容
 
 ---
 
@@ -56,7 +59,7 @@ Windows-Software-Residual-Scanner/
 
 執行完成後，工具會在 **腳本所在的同一個資料夾** 下自動生成一份 CSV 報告：
 * 檔名格式：`Check-Software_[電腦名稱]_[時間戳記].csv`
-* 檔名格式：`Scan-Residuals_[關鍵字]_[電腦名稱]_[時間戳記].csv`
+* 檔名格式：`AssetDiag_[關鍵字]_[電腦名稱]_[時間戳記].csv`
 * 範例：`Scan-Residuals_ReiBoot_DESKTOP-ABC123_20260705_2130.csv`
 
 
@@ -65,9 +68,16 @@ Windows-Software-Residual-Scanner/
 | :--- | :--- |
 | **Timestamp** | 跡證偵測時間 |
 | **Hostname** | 執行掃描的本機電腦名稱 |
+| **Confidence** | 可信度(僅參考) |
 | **Category** | 殘留類別（例如：HKLM_Registry, Windows_Installer_COM_Cache, User_Registry） |
 | **Path** | 實體檔案路徑、機碼路徑或 MSI GUID |
 | **Details** | 該跡證的詳細中繼資料（如產品顯示名稱、服務路徑等） |
+| **Status** | Detected/Uncertain |
+
+### 截圖
+
+<img width="961" height="561" alt="執行結果" src="https://github.com/user-attachments/assets/e394211e-9111-432f-9fbd-e0f2908d32a5" />
+<img width="972" height="171" alt="執行結果2" src="https://github.com/user-attachments/assets/c5951cbe-e235-4d6b-a27c-7d207183fce9" />
 
 ---
 
